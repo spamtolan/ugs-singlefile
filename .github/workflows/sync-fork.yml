@@ -8,11 +8,47 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Sync upstream changes
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Detect upstream repository
+        id: upstream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://github.com{{ github.repository }}/merge-upstream \
-            -d '{"branch":"main"}'
+          set -euo pipefail
+          response=$(curl -fsSL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}")
+
+          upstream=$(printf '%s' "$response" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data.get("parent", {}).get("full_name", ""))')
+
+          if [ -z "$upstream" ]; then
+            echo "This repository is not a fork or has no parent repository."
+            exit 1
+          fi
+
+          echo "repo=$upstream" >> "$GITHUB_OUTPUT"
+
+      - name: Sync fork with upstream
+        env:
+          UPSTREAM_REPO: ${{ steps.upstream.outputs.repo }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git" || git remote set-url upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch upstream
+
+          git checkout main
+          git merge --no-edit upstream/main || git merge --no-edit --allow-unrelated-histories upstream/main
+          git push origin main
