@@ -15,4 +15,4 @@ jobs:
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://github.com{{ github.repository }}/merge-upstream \
-            -d '{"branch":"main"}' # Change "main" to your default branch name if different
+            -d '{"branch":"main"}'
